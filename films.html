@@ -1,42 +1,216 @@
-<!DOCTYPE html>
+// server.js
+const express = require('express');
+const cors = require('cors');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Dummy user data - in a real app, use database and real auth
+let user = {
+  id: 1,
+  balance: 1000.0,
+};
+
+function getRandomCrashPoint() {
+  return +(Math.random() * 9 + 1).toFixed(2);
+}
+
+// Get current balance
+app.get('/balance', (req, res) => {
+  res.json({ balance: user.balance });
+});
+
+// Place a bet and start round
+app.post('/bet', (req, res) => {
+  const { betAmount } = req.body;
+  if (typeof betAmount !== 'number' || betAmount <= 0) {
+    return res.status(400).json({ error: 'Invalid bet amount' });
+  }
+  if (betAmount > user.balance) {
+    return res.status(400).json({ error: 'Insufficient balance' });
+  }
+
+  user.balance -= betAmount;
+  const crashPoint = getRandomCrashPoint();
+
+  res.json({ crashPoint, balance: user.balance, betAmount });
+});
+
+// Cash out winnings
+app.post('/cashout', (req, res) => {
+  const { betAmount, cashoutMultiplier } = req.body;
+  if (typeof betAmount !== 'number' || typeof cashoutMultiplier !== 'number') {
+    return res.status(400).json({ error: 'Invalid data' });
+  }
+
+  const winnings = +(betAmount * cashoutMultiplier).toFixed(2);
+  user.balance += winnings;
+
+  res.json({ winnings, balance: user.balance });
+});
+
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
+    <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Film Catalogue - LoveStory Films</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aviator Betting Game</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    max-width: 400px;
+    margin: 40px auto;
+    text-align: center;
+  }
+  input, button {
+    padding: 10px;
+    font-size: 16px;
+    margin: 5px;
+  }
+  #multiplier {
+    font-size: 48px;
+    margin: 20px 0;
+    color: green;
+  }
+  #status, #balance {
+    font-size: 20px;
+    margin: 20px 0;
+  }
+</style>
 </head>
 <body>
-  <header>
-    <h1>LoveStory Films</h1>
-    <nav>
-      <a href="index.html">Home</a>
-      <a href="cart.html">Cart</a>
-      <a href="login.html">Login</a>
-    </nav>
-  </header>
-  <main>
-    <h2>All Films</h2>
-    <div id="film-list"></div>
-  </main>
-  <footer>
-    <p>&copy; 2025 LoveStory Films</p>
-  </footer>
-  <script>
-    fetch('/api/films')
-      .then(res => res.json())
-      .then(films => {
-        const container = document.getElementById('film-list');
-        films.forEach(film => {
-          const el = document.createElement('div');
-          el.className = 'film-card';
-          el.innerHTML = `<h3>${film.title}</h3>
-                          <img src="${film.image}" alt="${film.title}" />
-                          <p>${film.description}</p>
-                          <p>Price: $${film.price}</p>
-                          <a href="film.html?id=${film.id}">Details</a>`;
-          container.appendChild(el);
-        });
+
+<h1>Aviator Betting Game</h1>
+
+<div id="balance">Loading balance...</div>
+
+<label for="betAmount">Enter your bet:</label><br />
+<input type="number" id="betAmount" min="1" value="10" /><br />
+
+<button id="startBtn">Start Round</button>
+<button id="cashoutBtn" disabled>Cash Out</button>
+
+<div id="multiplier">x1.00</div>
+<div id="status"></div>
+
+<script>
+  const API_BASE = 'http://localhost:3000';
+
+  const startBtn = document.getElementById('startBtn');
+  const cashoutBtn = document.getElementById('cashoutBtn');
+  const multiplierDisplay = document.getElementById('multiplier');
+  const statusDisplay = document.getElementById('status');
+  const betInput = document.getElementById('betAmount');
+  const balanceDisplay = document.getElementById('balance');
+
+  let multiplier = 1.0;
+  let intervalId = null;
+  let crashed = false;
+  let crashPoint = 0;
+  let bet = 0;
+  let cashoutMultiplier = 0;
+
+  async function fetchBalance() {
+    try {
+      const res = await fetch(API_BASE + '/balance');
+      const data = await res.json();
+      balanceDisplay.textContent = 'Balance: ' + data.balance.toFixed(2) + ' units';
+    } catch (e) {
+      balanceDisplay.textContent = 'Error loading balance';
+    }
+  }
+
+  async function startRound() {
+    bet = parseFloat(betInput.value);
+    if (isNaN(bet) || bet <= 0) {
+      alert('Please enter a valid bet amount greater than 0.');
+      return;
+    }
+
+    // Request server to start round
+    try {
+      const res = await fetch(API_BASE + '/bet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ betAmount: bet }),
       });
-  </script>
+      const data = await res.json();
+      if (res.ok) {
+        crashPoint = data.crashPoint;
+        multiplier = 1.0;
+        crashed = false;
+        cashoutMultiplier = 0;
+
+        multiplierDisplay.textContent = 'x1.00';
+        statusDisplay.textContent = 'Game started! Crash point hidden';
+        balanceDisplay.textContent = 'Balance: ' + data.balance.toFixed(2) + ' units';
+
+        startBtn.disabled = true;
+        cashoutBtn.disabled = false;
+        betInput.disabled = true;
+
+        intervalId = setInterval(() => {
+          multiplier += 0.05;
+          multiplierDisplay.textContent = 'x' + multiplier.toFixed(2);
+
+          if (multiplier >= crashPoint) {
+            clearInterval(intervalId);
+            crashed = true;
+            cashoutBtn.disabled = true;
+            startBtn.disabled = false;
+            betInput.disabled = false;
+            multiplierDisplay.textContent = 'CRASHED at x' + crashPoint.toFixed(2);
+            statusDisplay.textContent = 'You lost your bet of ' + bet.toFixed(2) + ' units!';
+          }
+        }, 100);
+      } else {
+        alert(data.error || 'Error starting round');
+      }
+    } catch (err) {
+      alert('Server error: ' + err.message);
+    }
+  }
+
+  async function cashOut() {
+    if (crashed) return;
+
+    cashoutMultiplier = multiplier;
+    clearInterval(intervalId);
+    cashoutBtn.disabled = true;
+    startBtn.disabled = false;
+    betInput.disabled = false;
+
+    try {
+      const res = await fetch(API_BASE + '/cashout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ betAmount: bet, cashoutMultiplier }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        multiplierDisplay.textContent = 'Cashed out at x' + cashoutMultiplier.toFixed(2);
+        statusDisplay.textContent = 'You won ' + data.winnings.toFixed(2) + ' units!';
+        balanceDisplay.textContent = 'Balance: ' + data.balance.toFixed(2) + ' units';
+      } else {
+        alert(data.error || 'Error during cashout');
+      }
+    } catch (err) {
+      alert('Server error: ' + err.message);
+    }
+  }
+
+  startBtn.addEventListener('click', startRound);
+  cashoutBtn.addEventListener('click', cashOut);
+
+  // Load initial balance
+  fetchBalance();
+</script>
+
 </body>
-</html>
+  </html>
+  
