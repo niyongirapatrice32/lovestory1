@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Film Catalogue - LoveStory Films</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>LoveStory Films</h1>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="cart.html">Cart</a>
+      <a href="login.html">Login</a>
+    </nav>
+  </header>
+  <main>
+    <h2>All Films</h2>
+    <div id="film-list"></div>
+  </main>
+  <footer>
+    <p>&copy; 2025 LoveStory Films</p>
+  </footer>
+  <script>
+    fetch('/api/films')
+      .then(res => res.json())
+      .then(films => {
+        const container = document.getElementById('film-list');
+        films.forEach(film => {
+          const el = document.createElement('div');
+          el.className = 'film-card';
+          el.innerHTML = `<h3>${film.title}</h3>
+                          <img src="${film.image}" alt="${film.title}" />
+                          <p>${film.description}</p>
+                          <p>Price: $${film.price}</p>
+                          <a href="film.html?id=${film.id}">Details</a>`;
+          container.appendChild(el);
+        });
+      });
+  </script>
+</body>
+</html>
